@@ -57,22 +57,22 @@ systemd-run --user --unit=lingbot-viser --collect \
   -p StandardError=append:/home/ctrob/lingbot-viser.log \
   /home/ctrob/lingbot-env/bin/python demo.py \
     --model_path /home/ctrob/lingbot-models/lingbot-map.pt \
-    --image_folder example/oxford --mask_sky --port 8080 $FLINFER \
-  || setsid bash -c "cd $PWD && source /home/ctrob/lingbot-env/bin/activate && python demo.py --model_path /home/ctrob/lingbot-models/lingbot-map.pt --image_folder example/oxford --mask_sky --port 8080 $FLINFER >> /home/ctrob/lingbot-viser.log 2>&1" < /dev/null &
+    --image_folder example/oxford --mask_sky --port 8090 $FLINFER \
+  || setsid bash -c "cd $PWD && source /home/ctrob/lingbot-env/bin/activate && python demo.py --model_path /home/ctrob/lingbot-models/lingbot-map.pt --image_folder example/oxford --mask_sky --port 8090 $FLINFER >> /home/ctrob/lingbot-viser.log 2>&1" < /dev/null &
 ```
 
 ### 7. Aguardar o viser subir (inferência roda ANTES do viser abrir; poll ~25 min)
 ```bash
 for i in $(seq 1 150); do
   grep -q "3D viewer at" /home/ctrob/lingbot-viser.log 2>/dev/null && { echo VISER_UP; break; }
-  curl -sf -m2 http://localhost:8080 >/dev/null 2>&1 && { echo PORT_OK; break; }
+  curl -sf -m2 http://localhost:8090 >/dev/null 2>&1 && { echo PORT_OK; break; }
   sleep 10
 done
 ```
 
 ### 8. Escrever SUMARIO.md (no cwd — pequeno)
-Campos: `STATUS` (UP/FAILED), `URL_LOCAL` http://localhost:8080,
-`URL_REDE` http://100.85.216.71:8080 (Tailscale do GB10, usada pela TV),
+Campos: `STATUS` (UP/FAILED), `URL_LOCAL` http://localhost:8090,
+`URL_REDE` http://100.85.216.71:8090 (Tailscale do GB10, usada pela TV),
 `SYSTEMD_UNIT` lingbot-viser.service, `CENA` example/oxford (--mask_sky),
 `BACKEND` (flashinfer ou sdpa), `LOG_TAIL` (20 linhas de /home/ctrob/lingbot-viser.log).
 Se FALHOU, inclua o erro. NÃO reinicie serviços de GPU do host (vLLM/DiffusionGemma).
