@@ -93,3 +93,38 @@ def select_by_motion(
 
     selected.sort(key=lambda t: t[0])
     return selected
+
+
+def fit_budget(
+    survivors: list[FrameStat],
+    survivor_flow: list[float],
+    budget: int,
+    max_gap: int = 45,
+    novelty_floor: float = 0.02,
+    iters: int = 30,
+) -> tuple[list[tuple[int, str]], float]:
+    """Busca binária no threshold de movimento para o total cair em [0.85*budget, budget].
+
+    threshold maior => menos frames. Se houver <= budget sobreviventes, mantém todos.
+    """
+    if len(survivors) <= budget:
+        return [(s.idx, "forced_first" if i == 0 else "motion")
+                for i, s in enumerate(survivors)], 0.0
+
+    lo, hi = 0.0, max(sum(survivor_flow), 1e-6)
+    best: tuple[list[tuple[int, str]], float] | None = None
+    for _ in range(iters):
+        mid = (lo + hi) / 2.0
+        sel = select_by_motion(survivors, survivor_flow, mid, max_gap, novelty_floor)
+        n = len(sel)
+        if n > budget:
+            lo = mid                      # precisa filtrar mais
+        else:
+            best = (sel, mid)
+            hi = mid                      # tenta aproximar do teto (mais frames)
+        if best is not None and 0.85 * budget <= len(best[0]) <= budget:
+            break
+    if best is None:
+        # piso forçado por max_gap excede o budget: devolve o menor conjunto possível
+        best = (select_by_motion(survivors, survivor_flow, hi, max_gap, novelty_floor), hi)
+    return best

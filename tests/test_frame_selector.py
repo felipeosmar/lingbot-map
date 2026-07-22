@@ -73,3 +73,19 @@ def test_select_novelty_skips_near_duplicates():
     idxs = [i for i, _ in sel]
     assert 0 in idxs and 3 in idxs          # primeiro e o distinto entram
     assert idxs.count(1) == 0               # duplicatas de hA são puladas por novidade
+
+
+def test_fit_budget_keeps_all_when_under_budget():
+    survivors = [_mk(i, 10, 1.0) for i in range(20)]
+    flow = [0.0] + [1.0] * 19
+    sel, thr = fs.fit_budget(survivors, flow, budget=100, max_gap=1000, novelty_floor=0.0)
+    assert len(sel) == 20 and thr == 0.0
+
+
+def test_fit_budget_lands_within_band():
+    survivors = [_mk(i, 10, 1.0) for i in range(1000)]
+    flow = [0.0] + [1.0] * 999
+    budget = 100
+    sel, thr = fs.fit_budget(survivors, flow, budget=budget, max_gap=10_000, novelty_floor=0.0)
+    assert 0.85 * budget <= len(sel) <= budget
+    assert thr > 0.0
