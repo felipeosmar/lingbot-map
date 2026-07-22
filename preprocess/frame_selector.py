@@ -218,19 +218,35 @@ def write_outputs(
     total_source: int,
     n_survivors: int,
     contact_sheet: bool = False,
+    output_ext: str = "png",
+    jpeg_quality: int = 95,
+    max_width: int = 0,
 ) -> None:
-    """Passo 2: re-lê a fonte e escreve os frames escolhidos + manifesto + relatório."""
+    """Passo 2: re-lê a fonte e escreve os frames escolhidos + manifesto + relatório.
+
+    ``output_ext`` escolhe o formato ('png' ou 'jpg'); ``jpeg_quality`` (1-100) só
+    vale para jpg; ``max_width`` > 0 redimensiona os frames de saída para essa largura
+    (mantendo proporção) — juntos reduzem muito o tamanho para transferência.
+    """
     os.makedirs(out_dir, exist_ok=True)
+    ext = output_ext.lower().lstrip(".")
+    imwrite_params = [cv2.IMWRITE_JPEG_QUALITY, int(jpeg_quality)] if ext in ("jpg", "jpeg") else []
     reason_by_idx = dict(selected)
     stat_by_idx = {s.idx: s for s in stats}
     ordered_idx = sorted(reason_by_idx)
-    out_name = {src: f"frame_{n:06d}.png" for n, src in enumerate(ordered_idx)}
+    out_name = {src: f"frame_{n:06d}.{ext}" for n, src in enumerate(ordered_idx)}
+
+    def _maybe_resize(img: np.ndarray) -> np.ndarray:
+        if max_width > 0 and img.shape[1] > max_width:
+            new_h = max(1, round(img.shape[0] * max_width / img.shape[1]))
+            return cv2.resize(img, (max_width, new_h), interpolation=cv2.INTER_AREA)
+        return img
 
     written: list[np.ndarray] = []
     written_idx: set[int] = set()
     for idx, bgr in source_frames:
         if idx in out_name:
-            cv2.imwrite(os.path.join(out_dir, out_name[idx]), bgr)
+            cv2.imwrite(os.path.join(out_dir, out_name[idx]), _maybe_resize(bgr), imwrite_params)
             written_idx.add(idx)
             if contact_sheet:
                 written.append(cv2.resize(bgr, (160, 120), interpolation=cv2.INTER_AREA))
@@ -289,6 +305,9 @@ def run(
     novelty_floor: float = 0.02,
     min_entropy: float = 2.5,
     contact_sheet: bool = False,
+    output_ext: str = "png",
+    jpeg_quality: int = 95,
+    max_width: int = 0,
 ) -> int:
     stats = analyze_source(_source_iter(source_kind, source_path, sample_step), analysis_width)
     if not stats:
@@ -308,6 +327,7 @@ def run(
         selected, stats, out_dir, threshold,
         total_source=len(stats), n_survivors=len(survivors),
         contact_sheet=contact_sheet,
+        output_ext=output_ext, jpeg_quality=jpeg_quality, max_width=max_width,
     )
     print(f"Selecionados {len(selected)} de {len(stats)} frames -> {out_dir}")
     return len(selected)
@@ -326,6 +346,12 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--novelty_floor", type=float, default=0.02)
     ap.add_argument("--min_entropy", type=float, default=2.5)
     ap.add_argument("--contact_sheet", action="store_true")
+    ap.add_argument("--output_ext", type=str, default="png", choices=["png", "jpg", "jpeg"],
+                    help="Formato dos frames de saída (jpg reduz muito o tamanho)")
+    ap.add_argument("--jpeg_quality", type=int, default=95,
+                    help="Qualidade JPEG 1-100 (só quando --output_ext jpg)")
+    ap.add_argument("--max_width", type=int, default=0,
+                    help="Redimensiona os frames de saída para esta largura (0 = resolução original)")
     args = ap.parse_args(argv)
 
     kind = "video" if args.video_path else "folder"
@@ -333,7 +359,8 @@ def main(argv: list[str] | None = None) -> None:
     run(kind, path, args.output_dir, budget=args.budget, sample_step=args.sample_step,
         analysis_width=args.analysis_width, max_gap=args.max_gap,
         novelty_floor=args.novelty_floor, min_entropy=args.min_entropy,
-        contact_sheet=args.contact_sheet)
+        contact_sheet=args.contact_sheet, output_ext=args.output_ext,
+        jpeg_quality=args.jpeg_quality, max_width=args.max_width)
 
 
 if __name__ == "__main__":

@@ -1,3 +1,5 @@
+import os
+
 import cv2
 import numpy as np
 import pytest
@@ -195,3 +197,24 @@ def test_run_never_empty_when_gate_rejects_all(tmp_path):
                sample_step=1, analysis_width=160, max_gap=1000,
                novelty_floor=0.0, min_entropy=2.5, contact_sheet=False)
     assert n >= 1
+
+
+def test_write_outputs_jpg_and_max_width(tmp_path):
+    # frames 320x240; saída em jpg redimensionada para largura 80
+    frames = [(i, np.full((240, 320, 3), i * 10, np.uint8)) for i in range(4)]
+    stats = fs.analyze_source(iter(frames), analysis_width=160)
+    selected = [(0, "forced_first"), (2, "motion")]
+    out = str(tmp_path / "sel")
+    fs.write_outputs(iter(frames), selected, stats, out,
+                     threshold=1.0, total_source=4, n_survivors=4,
+                     output_ext="jpg", jpeg_quality=90, max_width=80)
+    files = sorted(os.listdir(out))
+    jpgs = [f for f in files if f.endswith(".jpg")]
+    assert jpgs == ["frame_000000.jpg", "frame_000001.jpg"]  # ext jpg + sequencial
+    assert not any(f.endswith(".png") for f in files)         # nenhum png
+    img = cv2.imread(os.path.join(out, "frame_000000.jpg"))
+    assert img is not None and img.shape[1] == 80              # redimensionado p/ 80px de largura
+    # manifesto referencia os nomes .jpg
+    with open(os.path.join(out, "selection_manifest.csv")) as fh:
+        rows = list(__import__("csv").DictReader(fh))
+    assert rows[0]["out_name"] == "frame_000000.jpg"
