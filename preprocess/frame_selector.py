@@ -222,16 +222,24 @@ def write_outputs(
     out_name = {src: f"frame_{n:06d}.png" for n, src in enumerate(ordered_idx)}
 
     written: list[np.ndarray] = []
+    written_idx: set[int] = set()
     for idx, bgr in source_frames:
         if idx in out_name:
             cv2.imwrite(os.path.join(out_dir, out_name[idx]), bgr)
+            written_idx.add(idx)
             if contact_sheet:
                 written.append(cv2.resize(bgr, (160, 120), interpolation=cv2.INTER_AREA))
+
+    # Verificar que todos os frames selecionados foram efetivamente encontrados
+    missing = [i for i in ordered_idx if i not in written_idx]
+    if missing:
+        raise ValueError(f"Frames selecionados ausentes na fonte ao reescrever: {missing[:10]}"
+                         f"{'...' if len(missing) > 10 else ''} (total {len(missing)})")
 
     fps_hint = 30.0
     with open(os.path.join(out_dir, "selection_manifest.csv"), "w", newline="") as fh:
         w = csv.writer(fh)
-        w.writerow(["out_name", "src_frame_idx", "timestamp_s", "sharpness",
+        w.writerow(["out_name", "src_frame_idx", "timestamp_s_assume30fps", "sharpness",
                     "flow_prev", "brightness", "entropy", "reason"])
         for idx in ordered_idx:
             s = stat_by_idx[idx]
@@ -245,6 +253,7 @@ def write_outputs(
         fh.write(f"Sobreviventes do portão de qualidade: {n_survivors}\n")
         fh.write(f"Selecionados: {len(ordered_idx)}\n")
         fh.write(f"motion_threshold final: {threshold:.4f}\n")
+        fh.write("Nota: timestamp_s_assume30fps assume 30 fps (o seletor não conhece o fps real da fonte).\n")
         if ordered_idx:
             fh.write(f"Índice de origem: {ordered_idx[0]}..{ordered_idx[-1]}\n")
 

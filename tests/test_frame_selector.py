@@ -139,3 +139,26 @@ def test_write_outputs_creates_frames_manifest_report(tmp_path):
         rows = list(csv.DictReader(fh))
     assert [r["src_frame_idx"] for r in rows] == ["0", "4"]
     assert rows[0]["reason"] == "forced_first"
+    assert "timestamp_s_assume30fps" in rows[0]  # verificar coluna renomeada
+    with open(os.path.join(out, "selection_report.txt")) as fh:
+        report = fh.read()
+    assert "timestamp_s_assume30fps assume 30 fps" in report  # verificar nota na report
+
+
+def test_write_outputs_raises_on_missing_selected_frames(tmp_path):
+    """Verifica que write_outputs falha se frame selecionado não está presente na fonte."""
+    import os
+    frames = [(i, _color(i * 10)) for i in range(4)]  # frames 0, 1, 2, 3
+    stats = fs.analyze_source(iter(frames), analysis_width=160)
+    # Seleciona frames 0, 2, 99 (99 não existe)
+    selected = [(0, "forced_first"), (2, "motion"), (99, "motion")]
+    out = str(tmp_path / "sel")
+    with pytest.raises(ValueError, match="Frames selecionados ausentes"):
+        fs.write_outputs(iter(frames), selected, stats, out,
+                         threshold=1.5, total_source=4, n_survivors=4)
+    # Verificar que a exceção menciona o índice 99
+    try:
+        fs.write_outputs(iter(frames), selected, stats, out,
+                         threshold=1.5, total_source=4, n_survivors=4)
+    except ValueError as e:
+        assert "99" in str(e)
