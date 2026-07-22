@@ -12,7 +12,12 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 
-from preprocess import frame_metrics as fm
+try:
+    from preprocess import frame_metrics as fm
+except ModuleNotFoundError:  # executado como script (python preprocess/frame_selector.py)
+    import sys as _sys
+    _sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from preprocess import frame_metrics as fm
 
 
 @dataclass
