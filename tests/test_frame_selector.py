@@ -1,3 +1,4 @@
+import cv2
 import numpy as np
 import pytest
 from preprocess import frame_selector as fs
@@ -89,3 +90,33 @@ def test_fit_budget_lands_within_band():
     sel, thr = fs.fit_budget(survivors, flow, budget=budget, max_gap=10_000, novelty_floor=0.0)
     assert 0.85 * budget <= len(sel) <= budget
     assert thr > 0.0
+
+
+def _write_video(path, frames):
+    h, w = frames[0].shape[:2]
+    vw = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*"mp4v"), 30, (w, h))
+    for f in frames:
+        vw.write(f)
+    vw.release()
+
+
+def _color(v):
+    return np.full((120, 160, 3), v, np.uint8)
+
+
+def test_iter_video_frames_indices(tmp_path):
+    frames = [_color(i * 20) for i in range(6)]
+    p = str(tmp_path / "v.mp4")
+    _write_video(p, frames)
+    got = list(fs.iter_video_frames(p, sample_step=2))
+    assert [i for i, _ in got] == [0, 2, 4]
+
+
+def test_analyze_source_fills_stats_and_flow():
+    base = np.random.RandomState(3).randint(0, 256, (120, 160, 3), np.uint8)
+    frames = [(0, base), (1, base), (2, np.roll(base, 15, axis=1))]
+    stats = fs.analyze_source(iter(frames), analysis_width=160)
+    assert len(stats) == 3
+    assert stats[0].flow_prev == 0.0
+    assert stats[1].flow_prev < stats[2].flow_prev   # frame igual -> ~0; deslocado -> maior
+    assert all(hasattr(s, "sharpness") for s in stats)

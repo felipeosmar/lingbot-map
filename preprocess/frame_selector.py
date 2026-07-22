@@ -128,3 +128,77 @@ def fit_budget(
         # piso forçado por max_gap excede o budget: devolve o menor conjunto possível
         best = (select_by_motion(survivors, survivor_flow, hi, max_gap, novelty_floor), hi)
     return best
+
+
+def iter_video_frames(video_path: str, sample_step: int = 1) -> Iterator[tuple[int, np.ndarray]]:
+    """Iterador de frames do vídeo com amostragem. Retorna (idx_original, BGR)."""
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise ValueError(f"Não foi possível abrir o vídeo: {video_path}")
+    step = max(1, int(sample_step))
+    idx = 0
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            if idx % step == 0:
+                yield idx, frame
+            idx += 1
+    finally:
+        cap.release()
+
+
+def iter_folder_frames(
+    image_folder: str,
+    exts: tuple[str, ...] = (".jpg", ".jpeg", ".png"),
+    sample_step: int = 1,
+) -> Iterator[tuple[int, np.ndarray]]:
+    """Iterador de frames da pasta de imagens com amostragem. Retorna (idx_original, BGR)."""
+    paths = sorted(
+        p for p in glob.glob(os.path.join(image_folder, "*"))
+        if os.path.splitext(p)[1].lower() in exts
+    )
+    if not paths:
+        raise ValueError(f"Nenhuma imagem em: {image_folder}")
+    step = max(1, int(sample_step))
+    for idx, p in enumerate(paths):
+        if idx % step != 0:
+            continue
+        img = cv2.imread(p)
+        if img is None:
+            raise ValueError(f"Não foi possível ler a imagem: {p}")
+        yield idx, img
+
+
+def to_gray_small(bgr: np.ndarray, analysis_width: int) -> np.ndarray:
+    """Converte BGR para grayscale e redimensiona se necessário."""
+    h, w = bgr.shape[:2]
+    if w > analysis_width:
+        new_h = max(1, round(h * analysis_width / w))
+        bgr = cv2.resize(bgr, (analysis_width, new_h), interpolation=cv2.INTER_AREA)
+    return cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+
+
+def analyze_source(
+    frames: Iterable[tuple[int, np.ndarray]],
+    analysis_width: int = 320,
+) -> list[FrameStat]:
+    """Passo 1: métricas por frame + fluxo do frame analisado anterior (mantém só o gray anterior)."""
+    stats: list[FrameStat] = []
+    prev_gray: np.ndarray | None = None
+    for idx, bgr in tqdm(frames, desc="Analisando frames", unit="frame"):
+        gray = to_gray_small(bgr, analysis_width)
+        brightness, clipped, entropy = fm.exposure(gray)
+        flow_prev = 0.0 if prev_gray is None else fm.flow_magnitude(prev_gray, gray)
+        stats.append(FrameStat(
+            idx=idx,
+            sharpness=fm.sharpness(gray),
+            brightness=brightness,
+            clipped=clipped,
+            entropy=entropy,
+            hist=fm.histogram(gray),
+            flow_prev=flow_prev,
+        ))
+        prev_gray = gray
+    return stats
