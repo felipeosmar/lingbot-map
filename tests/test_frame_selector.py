@@ -162,3 +162,36 @@ def test_write_outputs_raises_on_missing_selected_frames(tmp_path):
                          threshold=1.5, total_source=4, n_survivors=4)
     except ValueError as e:
         assert "99" in str(e)
+
+
+def test_run_end_to_end_respects_budget_and_drops_blur(tmp_path):
+    import os
+    rs = np.random.RandomState(7)
+    frames = []
+    for i in range(40):
+        f = rs.randint(0, 256, (120, 160, 3), np.uint8)   # conteúdo variando (movimento)
+        if i in (10, 11, 12):                              # trecho borrado
+            f = cv2.GaussianBlur(f, (0, 0), sigmaX=6)
+        frames.append(f)
+    vpath = str(tmp_path / "v.mp4")
+    _write_video(vpath, frames)
+    out = str(tmp_path / "sel")
+    n = fs.run(source_kind="video", source_path=vpath, out_dir=out, budget=12,
+               sample_step=1, analysis_width=160, max_gap=1000,
+               novelty_floor=0.0, min_entropy=0.0, contact_sheet=False)
+    assert 0.85 * 12 <= n <= 12
+    pngs = sorted(f for f in os.listdir(out) if f.endswith(".png"))
+    assert len(pngs) == n
+    # nomes sequenciais e ordenados
+    assert pngs == [f"frame_{i:06d}.png" for i in range(n)]
+
+
+def test_run_never_empty_when_gate_rejects_all(tmp_path):
+    frames = [_color(2) for _ in range(8)]         # todos escuros -> portão reprovaria
+    vpath = str(tmp_path / "v.mp4")
+    _write_video(vpath, frames)
+    out = str(tmp_path / "sel")
+    n = fs.run(source_kind="video", source_path=vpath, out_dir=out, budget=100,
+               sample_step=1, analysis_width=160, max_gap=1000,
+               novelty_floor=0.0, min_entropy=2.5, contact_sheet=False)
+    assert n >= 1

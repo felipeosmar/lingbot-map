@@ -265,3 +265,71 @@ def write_outputs(
             r, c = divmod(i, cols)
             grid[r * 120:(r + 1) * 120, c * 160:(c + 1) * 160] = thumb
         cv2.imwrite(os.path.join(out_dir, "contact_sheet.png"), grid)
+
+
+def _source_iter(source_kind: str, source_path: str, sample_step: int):
+    if source_kind == "video":
+        return iter_video_frames(source_path, sample_step)
+    return iter_folder_frames(source_path, sample_step=sample_step)
+
+
+def run(
+    source_kind: str,
+    source_path: str,
+    out_dir: str,
+    budget: int = 900,
+    sample_step: int = 1,
+    analysis_width: int = 320,
+    max_gap: int = 45,
+    novelty_floor: float = 0.02,
+    min_entropy: float = 2.5,
+    contact_sheet: bool = False,
+) -> int:
+    stats = analyze_source(_source_iter(source_kind, source_path, sample_step), analysis_width)
+    if not stats:
+        raise ValueError("Fonte sem frames legíveis.")
+
+    survivor_pos = quality_gate(stats, min_entropy=min_entropy)
+    if not survivor_pos:                     # relaxa: nunca retorna vazio
+        print("Aviso: portão de qualidade reprovou tudo — relaxando limiares.")
+        survivor_pos = list(range(len(stats)))
+
+    survivors = [stats[p] for p in survivor_pos]
+    survivor_flow = build_survivor_flow(stats, survivor_pos)
+    selected, threshold = fit_budget(survivors, survivor_flow, budget, max_gap, novelty_floor)
+
+    write_outputs(
+        _source_iter(source_kind, source_path, sample_step),
+        selected, stats, out_dir, threshold,
+        total_source=len(stats), n_survivors=len(survivors),
+        contact_sheet=contact_sheet,
+    )
+    print(f"Selecionados {len(selected)} de {len(stats)} frames -> {out_dir}")
+    return len(selected)
+
+
+def main(argv: list[str] | None = None) -> None:
+    ap = argparse.ArgumentParser(description="Seletor de frames (qualidade + conteúdo + orçamento)")
+    src = ap.add_mutually_exclusive_group(required=True)
+    src.add_argument("--video_path", type=str)
+    src.add_argument("--image_folder", type=str)
+    ap.add_argument("--output_dir", type=str, required=True)
+    ap.add_argument("--budget", type=int, default=900)
+    ap.add_argument("--sample_step", type=int, default=1)
+    ap.add_argument("--analysis_width", type=int, default=320)
+    ap.add_argument("--max_gap", type=int, default=45)
+    ap.add_argument("--novelty_floor", type=float, default=0.02)
+    ap.add_argument("--min_entropy", type=float, default=2.5)
+    ap.add_argument("--contact_sheet", action="store_true")
+    args = ap.parse_args(argv)
+
+    kind = "video" if args.video_path else "folder"
+    path = args.video_path or args.image_folder
+    run(kind, path, args.output_dir, budget=args.budget, sample_step=args.sample_step,
+        analysis_width=args.analysis_width, max_gap=args.max_gap,
+        novelty_floor=args.novelty_floor, min_entropy=args.min_entropy,
+        contact_sheet=args.contact_sheet)
+
+
+if __name__ == "__main__":
+    main()
