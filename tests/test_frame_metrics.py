@@ -37,9 +37,11 @@ def test_histogram_normalized_and_distance():
 
 
 def test_flow_magnitude_grows_with_shift():
-    base = np.random.RandomState(1).randint(0, 256, (120, 160), np.uint8)
-    shift1 = np.roll(base, 2, axis=1)
-    shift5 = np.roll(base, 10, axis=1)
+    # textura suave (rastreável pelo fluxo) num canvas maior; desloca por recorte (sem wraparound)
+    rs = np.random.RandomState(1)
+    canvas = cv2.GaussianBlur(rs.randint(0, 256, (160, 300), np.uint8), (0, 0), sigmaX=2)
+    crop = lambda dx: canvas[:, dx:dx + 220]
+    base, shift1, shift5 = crop(20), crop(22), crop(30)   # +0, +2 px, +10 px
     m0 = fm.flow_magnitude(base, base)
     m1 = fm.flow_magnitude(base, shift1)
     m5 = fm.flow_magnitude(base, shift5)
