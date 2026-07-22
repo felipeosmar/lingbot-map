@@ -202,3 +202,57 @@ def analyze_source(
         ))
         prev_gray = gray
     return stats
+
+
+def write_outputs(
+    source_frames: Iterable[tuple[int, np.ndarray]],
+    selected: list[tuple[int, str]],
+    stats: list[FrameStat],
+    out_dir: str,
+    threshold: float,
+    total_source: int,
+    n_survivors: int,
+    contact_sheet: bool = False,
+) -> None:
+    """Passo 2: re-lê a fonte e escreve os frames escolhidos + manifesto + relatório."""
+    os.makedirs(out_dir, exist_ok=True)
+    reason_by_idx = dict(selected)
+    stat_by_idx = {s.idx: s for s in stats}
+    ordered_idx = sorted(reason_by_idx)
+    out_name = {src: f"frame_{n:06d}.png" for n, src in enumerate(ordered_idx)}
+
+    written: list[np.ndarray] = []
+    for idx, bgr in source_frames:
+        if idx in out_name:
+            cv2.imwrite(os.path.join(out_dir, out_name[idx]), bgr)
+            if contact_sheet:
+                written.append(cv2.resize(bgr, (160, 120), interpolation=cv2.INTER_AREA))
+
+    fps_hint = 30.0
+    with open(os.path.join(out_dir, "selection_manifest.csv"), "w", newline="") as fh:
+        w = csv.writer(fh)
+        w.writerow(["out_name", "src_frame_idx", "timestamp_s", "sharpness",
+                    "flow_prev", "brightness", "entropy", "reason"])
+        for idx in ordered_idx:
+            s = stat_by_idx[idx]
+            w.writerow([out_name[idx], idx, round(idx / fps_hint, 3),
+                        round(s.sharpness, 2), round(s.flow_prev, 3),
+                        round(s.brightness, 1), round(s.entropy, 3), reason_by_idx[idx]])
+
+    with open(os.path.join(out_dir, "selection_report.txt"), "w") as fh:
+        fh.write("Seletor de frames — relatório\n")
+        fh.write(f"Frames na fonte (analisados): {total_source}\n")
+        fh.write(f"Sobreviventes do portão de qualidade: {n_survivors}\n")
+        fh.write(f"Selecionados: {len(ordered_idx)}\n")
+        fh.write(f"motion_threshold final: {threshold:.4f}\n")
+        if ordered_idx:
+            fh.write(f"Índice de origem: {ordered_idx[0]}..{ordered_idx[-1]}\n")
+
+    if contact_sheet and written:
+        cols = 8
+        rows = (len(written) + cols - 1) // cols
+        grid = np.zeros((rows * 120, cols * 160, 3), np.uint8)
+        for i, thumb in enumerate(written):
+            r, c = divmod(i, cols)
+            grid[r * 120:(r + 1) * 120, c * 160:(c + 1) * 160] = thumb
+        cv2.imwrite(os.path.join(out_dir, "contact_sheet.png"), grid)

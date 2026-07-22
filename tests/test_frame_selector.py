@@ -120,3 +120,22 @@ def test_analyze_source_fills_stats_and_flow():
     assert stats[0].flow_prev == 0.0
     assert stats[1].flow_prev < stats[2].flow_prev   # frame igual -> ~0; deslocado -> maior
     assert all(hasattr(s, "sharpness") for s in stats)
+
+
+def test_write_outputs_creates_frames_manifest_report(tmp_path):
+    import os
+    import csv
+    frames = [(i, _color(i * 10)) for i in range(6)]
+    stats = fs.analyze_source(iter(frames), analysis_width=160)
+    selected = [(0, "forced_first"), (4, "motion")]
+    out = str(tmp_path / "sel")
+    fs.write_outputs(iter(frames), selected, stats, out,
+                     threshold=1.5, total_source=6, n_survivors=6)
+    pngs = sorted(f for f in os.listdir(out) if f.endswith(".png"))
+    assert pngs == ["frame_000000.png", "frame_000001.png"]  # renomeados sequencialmente
+    assert os.path.exists(os.path.join(out, "selection_manifest.csv"))
+    assert os.path.exists(os.path.join(out, "selection_report.txt"))
+    with open(os.path.join(out, "selection_manifest.csv")) as fh:
+        rows = list(csv.DictReader(fh))
+    assert [r["src_frame_idx"] for r in rows] == ["0", "4"]
+    assert rows[0]["reason"] == "forced_first"
